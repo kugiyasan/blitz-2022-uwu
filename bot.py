@@ -153,12 +153,12 @@ class Bot:
         units = [unit for team in tick.teams for unit in team.units if unit.position]
         x = unit_position.x
         y = unit_position.y
-        combs = (
+        combs = [
             (x - 1, y),
             (x + 1, y),
             (x, y - 1),
             (x, y + 1),
-        )
+        ]
         random.shuffle(combs)
 
         for (x, y) in combs:
