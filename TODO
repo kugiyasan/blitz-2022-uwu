@@ -1,11 +1,15 @@
 # V.1
-[ ] spawn near a diamond and run towards it
-[ ] run away from enemies (don't be on the same line)
+[x] spawn near a diamond and run towards it
+[ ] run away from enemies (don't be on the same line)!!
 
 
 [ ] Centralized movement
-TRY CATCH GLOBAL
+[x] TRY CATCH GLOBAL
 handle player > diamond
+
+[ ] run away when summon max
+[ ] don't summon when in danger
+
 
 # DEFENSE
 [ ] drop if enemies can attack you in the next turn (need dijkstra https://www.slant.co/topics/3893/~best-2d-pathfinding-algorithms)
@@ -14,9 +18,13 @@ handle player > diamond
 # ATTACK
 [ ] run / vine on enemies
 [ ] 1 player vine, other one grab the diamond 
+[ ] Vine if you are before them in next turn
 
 
 # VINES
 
 
-Bot command errors :  (id: 4|position: {"x":1,"y":3})) Target destination is not walkable: [x: 1, y: 2] (id: 5|position: {"x":1,"y":4})) Target destination is not walkable: [x: 1, y: 3] (id: 6|position: {"x":13,"y":2})) Diamond with id '1dc9a586-821e-4c0d-a9d1-fe4bcc942316 is already at the maximum summon level!
+Bot command errors :  
+(id: 4|position: {"x":1,"y":3})) Target destination is not walkable: [x: 1, y: 2] 
+(id: 5|position: {"x":1,"y":4})) Target destination is not walkable: [x: 1, y: 3] 
+(id: 6|position: {"x":13,"y":2})) Diamond with id '1dc9a586-821e-4c0d-a9d1-fe4bcc942316 is already at the maximum summon level!
