@@ -21,7 +21,10 @@ async def run():
                 json.dumps({"type": "REGISTER", "token": os.environ["TOKEN"]})
             )
         else:
-            await websocket.send(json.dumps({"type": "REGISTER", "teamName": "UwUBot"}))
+            team_name = os.environ.get("TEAMNAME") or "UwUBot"
+            await websocket.send(
+                json.dumps({"type": "REGISTER", "teamName": team_name})
+            )
 
         await game_loop(websocket=websocket, bot=bot)
 

@@ -23,7 +23,6 @@ class TileType(Enum):
 class UnitRole(Enum):
     Attacking = 1
     Defending = 2
-    Stale = 3
 
 
 @dataclass_json

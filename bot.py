@@ -1,24 +1,9 @@
 from typing import Callable, Dict, List, Optional, Tuple
-from game_message import Tick, Position, Team, TickMap, TileType
+from game_message import Tick, Position, Team, TickMap, TileType, Diamond, Unit
 from game_command import CommandAction, CommandType
 
 import random
 import heapq
-
-
-class PositionWrapper:
-    def __init__(self, dist: int, position: Position) -> None:
-        self.dist = dist
-        self.position = position
-
-    def __hash__(self) -> int:
-        # x = self.position.x
-        # y = self.position.y
-        # return hash((x, y))
-        return hash(self.position)
-
-    def __lt__(self, other: "PositionWrapper") -> bool:
-        return self.dist < other.dist
 
 
 class Bot:
@@ -26,74 +11,104 @@ class Bot:
         pass
 
     def get_next_moves(self, tick: Tick) -> List[CommandAction]:
+        actions = self._get_next_moves(tick)
+        return actions
+        # try:
+        #     return self._get_next_moves(tick)
+        # except Exception as e:
+        #     print(e)
+        #     return []
+
+    def _get_next_moves(self, tick: Tick) -> List[CommandAction]:
         my_team: Team = tick.get_teams_by_id()[tick.teamId]
         actions: List[CommandAction] = []
+        tick_map = tick.map
+        diamonds = tick_map.diamonds
 
         for unit in my_team.units:
+            enemy = self.can_attack_enemy(unit.position, tick)
+            if tick.tick == tick.totalTick - 1 and unit.hasDiamond:
+                empty_tile = self.find_empty_tile_around_unit(unit.position, tick)
+                if empty_tile is not None:
+                    action = CommandAction(
+                        action=CommandType.DROP, unitId=unit.id, target=empty_tile
+                    )
+                else:
+                    action = CommandAction(action=CommandType.NONE, unitId=unit.id)
             # S'il reste unit à spawner, la faire spawner
-            # if tick.tick == 300 and unit.hasDiamond:
-            #     for neighbor in self.get_neighbors(u=unit.position, width=1, height=1):
-            #         # TODO CHECK IF PLAYER BESIDE
-            #         if tick.map.get_tile_type_at(neighbor) == TileType.EMPTY:
-            #             action = CommandAction(
-            #                 action=CommandType.DROP, unitId=unit.id, target=neighbor
-            #             )
-            #             actions.append(action)
-
-            if not unit.hasSpawned:
+            elif not unit.hasSpawned:
+                (target, diamond) = self.get_spawn_near_diamond(tick, diamonds)
+                diamonds = [d for d in diamonds if d.id != diamond]
                 action = CommandAction(
                     action=CommandType.SPAWN,
                     unitId=unit.id,
-                    target=self.get_spawn_near_diamond(tick),
+                    target=target,
                 )
-                actions.append(action)
-            # elif unit.hasDiamond:
-            #     # RUN AWAY
-            #     action = CommandAction(
-            #         action=CommandType.MOVE,
-            #         unitId=unit.id,
-            #         target=self.run_away(tick.map),
-            #     )
-            #     actions.append(action)
-            # elif (
-            #     self.check_if_enemy_aside_unit(unit.position, tick) is not None
-            #     and not unit.hasDiamond
-            # ):
-            #     # Attack if enemy is adjacent
-            #     action = CommandAction(
-            #         action=CommandType.ATTACK,
-            #         unitId=unit.id,
-            #         target=self.check_if_enemy_aside_unit(unit.position, tick)
-            #     )
-            #     actions.append(action)
+            elif unit.hasDiamond:
+                action = CommandAction(
+                    action=CommandType.SUMMON,
+                    unitId=unit.id,
+                )
+                # if summon max level, run_away
+                # check if enough time to summon
+            elif enemy is not None:
+                action = CommandAction(
+                    action=CommandType.ATTACK, unitId=unit.id, target=enemy
+                )
             else:
-                # Go towards diamond
+                diamond_position = self.get_diamond_nearest_unit(tick, unit.position)
                 action = CommandAction(
                     action=CommandType.MOVE,
                     unitId=unit.id,
-                    target=self.get_diamond_nearest_unit(tick, unit.position),
+                    target=diamond_position,
                 )
-                actions.append(action)
+            actions.append(action)
         return actions
 
-    def check_if_enemy_aside_unit(
+    def find_empty_tile_around_unit(
         self, unit_position: Position, tick: Tick
     ) -> Optional[Position]:
-        other_teams = tick.teams
-        for team in other_teams:
-            if team.id == tick.get_teams_by_id()[tick.teamId]:
-                other_teams.remove(team)
+        tick_map = tick.map
+        x = unit_position.x
+        y = unit_position.y
+        if tick_map.get_tile_type_at(Position(x - 1, y)) == TileType.EMPTY:
+            return Position(x - 1, y)
+        elif tick_map.get_tile_type_at(Position(x + 1, y)) == TileType.EMPTY:
+            return Position(x + 1, y)
+        elif tick_map.get_tile_type_at(Position(x, y - 1)) == TileType.EMPTY:
+            return Position(x, y - 1)
+        elif tick_map.get_tile_type_at(Position(x, y + 1)) == TileType.EMPTY:
+            return Position(x, y + 1)
+        return None
 
-        for team in other_teams:
-            for other_unit in team.units:
+    def can_attack_enemy(
+        self, unit_position: Optional[Position], tick: Tick
+    ) -> Optional[Position]:
+        if unit_position is None:
+            return None
+        tick_map = tick.map
+        if tick_map.get_tile_type_at(unit_position) != TileType.EMPTY:
+            return None
+        x = unit_position.x
+        y = unit_position.y
+
+        for team in tick.teams:
+            if team.id == tick.teamId:
+                continue
+            for unit in team.units:
                 if (
-                    other_unit.position.x == unit_position.x - 1
-                    or other_unit.position.x == unit_position.x + 1
-                    or other_unit.position.y == unit_position.y - 1
-                    or other_unit.position.y == unit_position.y + 1
+                    unit.position is None
+                    or tick_map.get_tile_type_at(unit.position) != TileType.EMPTY
                 ):
-                    return other_unit.position
-
+                    continue
+                if unit.position == Position(x - 1, y):
+                    return unit.position
+                elif unit.position == Position(x + 1, y):
+                    return unit.position
+                elif unit.position == Position(x, y - 1):
+                    return unit.position
+                elif unit.position == Position(x, y + 1):
+                    return unit.position
         return None
 
     def run_away(self, tick_map: TickMap) -> Position:
@@ -102,25 +117,82 @@ class Bot:
             random.randint(0, tick_map.get_map_size_y() - 1),
         )
 
-    # Returns unit ID and diamond's position
+    # Returns diamond's position
     def get_diamond_nearest_unit(self, tick: Tick, unit_position: Position) -> Position:
         tick_map = tick.map
         diamonds = tick_map.diamonds
+        free_diamonds = [
+            d for d in diamonds if self.who_is_holding_this_diamond(tick, d) is None
+        ]
+        # ! There might be unachievable diamonds
+        if len(free_diamonds) == 0:
+            # No diamond is available, ATTACK THE ENEMY
+            free_diamonds = [
+                d
+                for d in diamonds
+                if self.who_is_holding_this_diamond(tick, d).teamId != tick.teamId
+            ]
+        if len(free_diamonds) == 0:
+            # Your team got all diamond, ATTACK THE ENEMY
+            # Target enemies, not diamonds
+            free_diamonds = self.find_nearest_enemy(tick, unit_position)
 
         def pred(u: Position) -> bool:
             return u == unit_position
 
+        def key(e: Tuple[int, Position]) -> int:
+            if e[0] == -1:
+                return 420420420420
+            return e[0]
+
         _, path = min(
-            self.dijkstra(tick_map, diamond.position, pred) for diamond in diamonds
+            (
+                self.dijkstra(tick_map, diamond.position, pred)
+                for diamond in free_diamonds
+            ),
+            key=key,
         )
 
-        return path[0]
+        pos = None
+        if len(path) >= 2:
+            pos = path[-2]
+        elif len(path):
+            pos = path[0]
 
-    # def get_spawn_near_diamond(self, tick: Tick) -> Tuple[Position, Position]:
-    def get_spawn_near_diamond(self, tick: Tick) -> Position:
+        if (
+            pos is not None
+            and self.validate_tile_exists(tick_map, pos)
+            and all(
+                unit.position != pos
+                for team in tick.teams
+                for unit in team.units
+            )
+        ):
+            return pos
+
+        return self.force_move(tick, unit_position)
+
+    def force_move(self, tick: Tick, unit_position: Position) -> Position:
+        tick_map = tick.map
+        width = tick_map.get_map_size_x()
+        height = tick_map.get_map_size_y()
+
+        for neighbor in self.get_neighbors(unit_position, width, height):
+            if self.validate_tile_exists(tick_map, neighbor):
+                if any(
+                    unit.position == neighbor
+                    for team in tick.teams
+                    for unit in team.units
+                ):
+                    continue
+        else:
+            return neighbor
+
+        return Position(0, 0)
+
+    def get_spawn_near_diamond(self, tick: Tick, diamonds) -> Tuple[Position, str]:
         """Return the position of the spawn and its nearest diamond"""
         # units = tick.get_teams_by_id()[tick.teamId].units
-        diamonds = tick.map.diamonds
         tick_map = tick.map
 
         min_dist = 9999999
@@ -138,20 +210,21 @@ class Bot:
             if dist < min_dist:
                 min_dist = dist
                 min_spawn = path[-1]
-                min_diamond = diamond.position
+                min_diamond = diamond.id
 
         # return min_spawn, min_diamond
-        return min_spawn
+        return min_spawn, min_diamond
 
     def get_neighbors(
-        self, u: Tuple[int, int], width: int, height: int
-    ) -> Tuple[Tuple[int, int], Tuple[int, int], Tuple[int, int], Tuple[int, int]]:
-        x, y = u
+        self, u: Position, width: int, height: int
+    ) -> Tuple[Position, Position, Position, Position]:
+        x = u.x
+        y = u.y
         return (
-            (x - 1, y),
-            (x + 1, y),
-            (x, y - 1),
-            (x, y + 1),
+            Position(x - 1, y),
+            Position(x, y - 1),
+            Position(x + 1, y),
+            Position(x, y + 1),
         )
 
     def backtrace(
@@ -200,16 +273,16 @@ class Bot:
             if pred(Position(cx, cy)):
                 return self.backtrace(prev, curr)
 
-            for v in self.get_neighbors(curr, width, height):
-                (x, y) = v
-                if not self.validate_tile_exists(tick_map, Position(x, y)):
+            for v in self.get_neighbors(Position(cx, cy), width, height):
+                x, y = v.x, v.y
+                if not self.validate_tile_exists(tick_map, v):
                     continue
 
                 new_dist = dist[cy][cx] + 1
                 if dist[y][x] == -1 or new_dist < dist[y][x]:
                     dist[y][x] = new_dist
-                    prev[v] = curr
-                    heapq.heappush(queue, (dist[y][x], v))
+                    prev[(x, y)] = curr
+                    heapq.heappush(queue, (dist[y][x], (x, y)))
 
         return -1, []
 
@@ -248,3 +321,42 @@ class Bot:
             else:
                 return x
         return x
+
+    def who_is_holding_this_diamond(self, tick: Tick, diamond: Diamond) -> Unit:
+        for team in tick.teams:
+            for unit in team.units:
+                if unit.hasDiamond:
+                    if unit.position == diamond.position:
+                        return unit
+        return None
+
+    def find_nearest_enemy(self, tick: Tick, unit_position: Position) -> Position:
+        tick_map = tick.map
+        other_teams = tick.teams
+        enemy_units = []
+        for team in other_teams:
+            if team.id == tick.get_teams_by_id()[tick.teamId]:
+                other_teams.remove(team)
+        for unit in team.units:
+            enemy_units.append(unit)
+
+        def pred(u: Position) -> bool:
+            return u == unit_position
+
+        def key(e: Tuple[int, Position]) -> int:
+            if e[0] == -1:
+                return 420420420420
+            return e[0]
+
+        _, path = min(
+            (
+                self.dijkstra(tick_map, unit.position, pred)
+                for unit in enemy_units
+                if unit.position is not None
+            ),
+            key=key,
+        )
+
+        if len(path):
+            return path[0]
+        return Position(0, 0)
