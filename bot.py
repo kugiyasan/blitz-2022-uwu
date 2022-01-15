@@ -6,9 +6,24 @@ import random
 import heapq
 
 
+class PositionWrapper:
+    def __init__(self, dist: int, position: Position) -> None:
+        self.dist = dist
+        self.position = position
+
+    def __hash__(self) -> int:
+        # x = self.position.x
+        # y = self.position.y
+        # return hash((x, y))
+        return hash(self.position)
+
+    def __lt__(self, other: "PositionWrapper") -> bool:
+        return self.dist < other.dist
+
+
 class Bot:
     def __init__(self) -> None:
-        print("Initializing your super mega duper bot")
+        pass
 
     def get_next_moves(self, tick: Tick) -> List[CommandAction]:
         my_team: Team = tick.get_teams_by_id()[tick.teamId]
@@ -16,14 +31,14 @@ class Bot:
 
         for unit in my_team.units:
             # S'il reste unit à spawner, la faire spawner
-            if tick.tick == 300 and unit.hasDiamond:
-                for neighbor in self.get_neighbors(u=unit.position, width=1, height=1):
-                    # TODO CHECK IF PLAYER BESIDE
-                    if tick.map.get_tile_type_at(neighbor) == TileType.EMPTY:
-                        action = CommandAction(
-                            action=CommandType.DROP, unitId=unit.id, target=neighbor
-                        )
-                        actions.append(action)
+            # if tick.tick == 300 and unit.hasDiamond:
+            #     for neighbor in self.get_neighbors(u=unit.position, width=1, height=1):
+            #         # TODO CHECK IF PLAYER BESIDE
+            #         if tick.map.get_tile_type_at(neighbor) == TileType.EMPTY:
+            #             action = CommandAction(
+            #                 action=CommandType.DROP, unitId=unit.id, target=neighbor
+            #             )
+            #             actions.append(action)
 
             if not unit.hasSpawned:
                 action = CommandAction(
@@ -32,33 +47,31 @@ class Bot:
                     target=self.get_spawn_near_diamond(tick),
                 )
                 actions.append(action)
-            elif unit.hasDiamond:
-                # RUN AWAY
-                action = CommandAction(
-                    action=CommandType.MOVE,
-                    unitId=unit.id,
-                    target=self.run_away(tick.map),
-                )
-                actions.append(action)
-            elif (
-                self.check_if_enemy_aside_unit(unit.position, tick)[0]
-                and not unit.hasDiamond
-            ):
-                # Attack if enemy is adjacent
-                action = CommandAction(
-                    action=CommandType.ATTACK,
-                    unitId=unit.id,
-                    target=self.check_if_enemy_aside_unit(unit.position, tick)[1],
-                )
-                actions.append(action)
+            # elif unit.hasDiamond:
+            #     # RUN AWAY
+            #     action = CommandAction(
+            #         action=CommandType.MOVE,
+            #         unitId=unit.id,
+            #         target=self.run_away(tick.map),
+            #     )
+            #     actions.append(action)
+            # elif (
+            #     self.check_if_enemy_aside_unit(unit.position, tick)[0]
+            #     and not unit.hasDiamond
+            # ):
+            #     # Attack if enemy is adjacent
+            #     action = CommandAction(
+            #         action=CommandType.ATTACK,
+            #         unitId=unit.id,
+            #         target=self.check_if_enemy_aside_unit(unit.position, tick)[1],
+            #     )
+            #     actions.append(action)
             else:
                 # Go towards diamond
                 action = CommandAction(
                     action=CommandType.MOVE,
                     unitId=unit.id,
-                    target=self.get_diamond_nearest_unit(
-                        unit.position
-                    ),  # include djikstra
+                    target=self.get_diamond_nearest_unit(tick, unit.position),
                 )
                 actions.append(action)
         return actions
@@ -90,8 +103,9 @@ class Bot:
         )
 
     # Returns unit ID and diamond's position
-    def get_diamond_nearest_unit(self, unit_position: Position, tick: Tick) -> Position:
-        diamonds = tick.map.diamonds
+    def get_diamond_nearest_unit(self, tick: Tick, unit_position: Position) -> Position:
+        tick_map = tick.map
+        diamonds = tick_map.diamonds
 
         def pred(u: Position) -> bool:
             return u == unit_position
@@ -100,9 +114,10 @@ class Bot:
             self.dijkstra(tick_map, diamond.position, pred) for diamond in diamonds
         )
 
-        return path[-1]
+        return path[0]
 
-    def get_spawn_near_diamond(self, tick: Tick) -> Tuple[Position, Position]:
+    # def get_spawn_near_diamond(self, tick: Tick) -> Tuple[Position, Position]:
+    def get_spawn_near_diamond(self, tick: Tick) -> Position:
         """Return the position of the spawn and its nearest diamond"""
         # units = tick.get_teams_by_id()[tick.teamId].units
         diamonds = tick.map.diamonds
@@ -118,64 +133,84 @@ class Bot:
 
         for diamond in diamonds:
             dist, path = self.dijkstra(tick_map, diamond.position, pred)
-            print(diamond.position, dist, path)
             if dist == -1:
                 continue
             if dist < min_dist:
                 min_dist = dist
-                min_spawn = path[0]
+                min_spawn = path[-1]
                 min_diamond = diamond.position
 
-        return min_spawn, min_diamond
+        # return min_spawn, min_diamond
+        return min_spawn
 
     def get_neighbors(
-        self, u: Position, width: int, height: int
+        self, u: Tuple[int, int], width: int, height: int
     ) -> Tuple[Position, Position, Position, Position]:
-        x = u.x
-        y = u.y
-        p1 = Position(x - 1, y)
-        p2 = Position(x + 1, y)
-        p3 = Position(x, y - 1)
-        p4 = Position(x, y + 1)
-
-        return p1, p2, p3, p4
+        x, y = u
+        return (
+            (x - 1, y),
+            (x + 1, y),
+            (x, y - 1),
+            (x, y + 1),
+        )
 
     def backtrace(
-        self, prev: Dict[Position, Position], u: Position
-    ) -> Tuple[int, List[Position]]:
+        self, prev: Dict[Tuple[int, int], Tuple[int, int]], u: Tuple[int, int]
+    ) -> Tuple[int, List[Tuple[int, int]]]:
         path = [u]
         while u in prev:
             u = prev[u]
             path.append(u)
-        return len(path), reversed(path)
+
+        path.reverse()
+        return len(path), path
 
     def dijkstra(
         self, tick_map: TickMap, start: Position, pred: Callable[[Position], bool]
     ) -> Tuple[int, List[Position]]:
-        # https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm
+        """
+        https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm
+        https://pythonalgos.com/dijkstras-algorithm-in-5-steps-with-python/
+
+        >>> bot = Bot()
+        >>> tiles = [["EMPTY" for _ in range(100)] for _ in range(100)]
+        >>> tick_map = TickMap(tiles=tiles, diamonds=[])
+        >>> def pred(u: Position) -> bool: return u == Position(99, 99)
+        >>> bot.dijkstra(tick_map, Position(0, 0), pred)
+        """
+        # ! CANNOT GO ON WALLS
         width = tick_map.get_map_size_x()
         height = tick_map.get_map_size_y()
 
-        dist = {}
+        dist = [[-1 for _ in range(width)] for _ in range(height)]
+        dist[start.y][start.x] = 0
         prev = {}
-        queue = []
+        visited = set()
+        queue = [(0, (start.x, start.y))]
 
         while len(queue):
-            u = heapq.heappop(queue)
+            # print(queue)
+            _dist, curr = heapq.heappop(queue)
 
-            if pred(u):
-                return self.backtrace(prev, u)
+            if curr in visited:
+                continue
 
-            for v in self.get_neighbors(u, width, height):
-                if not self.validate_tile_exists(tick_map, v):
+            visited.add(curr)
+            cx, cy = curr
+
+            if pred(Position(cx, cy)):
+                return self.backtrace(prev, curr)
+
+            for v in self.get_neighbors(curr, width, height):
+                (x, y) = v
+                if not self.validate_tile_exists(tick_map, Position(x, y)):
                     continue
 
-                new_dist = dist[u] + 1
-                if new_dist < dist[v]:
-                    dist[v] = new_dist
-                    prev[v] = v
-
-                heapq.heappush(queue, v)
+                new_dist = dist[cy][cx] + 1
+                if dist[y][x] == -1 or new_dist < dist[y][x]:
+                    dist[y][x] = new_dist
+                    prev[v] = curr
+                    heapq.heappush(queue, (dist[y][x], v))
 
         return -1, []
 

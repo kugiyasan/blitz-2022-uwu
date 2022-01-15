@@ -20,8 +20,14 @@ class TileType(Enum):
             raise Exception(f"Tile '{raw_tile}'' is not a valid tile.")
 
 
+class UnitRole(Enum):
+    Attacking = 1
+    Defending = 2
+    Stale = 3
+
+
 @dataclass_json
-@dataclass
+@dataclass(frozen=True)
 class Position:
     x: int
     y: int

@@ -4,6 +4,7 @@
 
 
 [ ] Centralized movement
+TRY CATCH GLOBAL
 
 # DEFENSE
 [ ] drop if enemies can attack you in the next turn (need dijkstra https://www.slant.co/topics/3893/~best-2d-pathfinding-algorithms)
