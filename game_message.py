@@ -33,13 +33,13 @@ class TickMap:
     tiles: List[List[str]]
     diamonds: List[Diamond]
 
-    def get_map_size_x(self):
+    def get_map_size_x(self) -> int:
         return len(self.tiles)
 
-    def get_map_size_y(self):
+    def get_map_size_y(self) -> int:
         return len(self.tiles[0])
 
-    def validate_tile_exists(self, position: Position):
+    def validate_tile_exists(self, position: Position) -> None:
         if (
             position.x < 0
             or position.y < 0
@@ -110,6 +110,7 @@ class Team:
     score: int
     units: List[Unit]
     errors: List[str]
+
 
 @dataclass_json
 @dataclass

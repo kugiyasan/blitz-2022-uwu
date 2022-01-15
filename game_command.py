@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 from dataclasses_json import dataclass_json
 from enum import Enum
 from game_message import Position

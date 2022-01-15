@@ -17,9 +17,11 @@ async def run():
     async with websockets.connect(uri) as websocket:
         bot = Bot()
         if "TOKEN" in os.environ:
-            await websocket.send(json.dumps({"type": "REGISTER", "token": os.environ["TOKEN"]}))
+            await websocket.send(
+                json.dumps({"type": "REGISTER", "token": os.environ["TOKEN"]})
+            )
         else:
-            await websocket.send(json.dumps({"type": "REGISTER", "teamName": "MyPythonicBot"}))
+            await websocket.send(json.dumps({"type": "REGISTER", "teamName": "UwUBot"}))
 
         await game_loop(websocket=websocket, bot=bot)
 
@@ -42,7 +44,11 @@ async def game_loop(websocket: websockets.WebSocketServerProtocol, bot: Bot):
             print(f"Bot command errors :  {' '.join(my_team.errors)}")
 
         next_moves: List = bot.get_next_moves(game_message)
-        await websocket.send(BotMessage(type=MessageType.COMMAND, actions=next_moves, tick=game_message.tick).to_json())
+        await websocket.send(
+            BotMessage(
+                type=MessageType.COMMAND, actions=next_moves, tick=game_message.tick
+            ).to_json()
+        )
 
 
 if __name__ == "__main__":

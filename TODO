@@ -1,0 +1,17 @@
+# V.1
+[ ] spawn near a diamond and run towards it
+[ ] run away from enemies (don't be on the same line)
+
+
+[ ] Centralized movement
+
+# DEFENSE
+[ ] drop if enemies can attack you in the next turn (need dijkstra https://www.slant.co/topics/3893/~best-2d-pathfinding-algorithms)
+[ ] vine on allies to escape
+
+# ATTACK
+[ ] run / vine on enemies
+[ ] 1 player vine, other one grab the diamond 
+
+
+# VINES
