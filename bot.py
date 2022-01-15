@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 from game_message import Tick, Position, Team, TickMap, TileType
 from game_command import CommandAction, CommandType
 
@@ -56,14 +56,14 @@ class Bot:
             #     )
             #     actions.append(action)
             # elif (
-            #     self.check_if_enemy_aside_unit(unit.position, tick)[0]
+            #     self.check_if_enemy_aside_unit(unit.position, tick) is not None
             #     and not unit.hasDiamond
             # ):
             #     # Attack if enemy is adjacent
             #     action = CommandAction(
             #         action=CommandType.ATTACK,
             #         unitId=unit.id,
-            #         target=self.check_if_enemy_aside_unit(unit.position, tick)[1],
+            #         target=self.check_if_enemy_aside_unit(unit.position, tick)
             #     )
             #     actions.append(action)
             else:
@@ -78,7 +78,7 @@ class Bot:
 
     def check_if_enemy_aside_unit(
         self, unit_position: Position, tick: Tick
-    ) -> Tuple[bool, Position]:
+    ) -> Optional[Position]:
         other_teams = tick.teams
         for team in other_teams:
             if team.id == tick.get_teams_by_id()[tick.teamId]:
@@ -92,9 +92,9 @@ class Bot:
                     or other_unit.position.y == unit_position.y - 1
                     or other_unit.position.y == unit_position.y + 1
                 ):
-                    return True, other_unit.position
+                    return other_unit.position
 
-        return False, None
+        return None
 
     def run_away(self, tick_map: TickMap) -> Position:
         return Position(
@@ -145,7 +145,7 @@ class Bot:
 
     def get_neighbors(
         self, u: Tuple[int, int], width: int, height: int
-    ) -> Tuple[Position, Position, Position, Position]:
+    ) -> Tuple[Tuple[int, int], Tuple[int, int], Tuple[int, int], Tuple[int, int]]:
         x, y = u
         return (
             (x - 1, y),
@@ -156,11 +156,11 @@ class Bot:
 
     def backtrace(
         self, prev: Dict[Tuple[int, int], Tuple[int, int]], u: Tuple[int, int]
-    ) -> Tuple[int, List[Tuple[int, int]]]:
-        path = [u]
+    ) -> Tuple[int, List[Position]]:
+        path = [Position(*u)]
         while u in prev:
             u = prev[u]
-            path.append(u)
+            path.append(Position(*u))
 
         path.reverse()
         return len(path), path
@@ -178,13 +178,12 @@ class Bot:
         >>> def pred(u: Position) -> bool: return u == Position(99, 99)
         >>> bot.dijkstra(tick_map, Position(0, 0), pred)
         """
-        # ! CANNOT GO ON WALLS
         width = tick_map.get_map_size_x()
         height = tick_map.get_map_size_y()
 
         dist = [[-1 for _ in range(width)] for _ in range(height)]
         dist[start.y][start.x] = 0
-        prev = {}
+        prev: Dict[Tuple[int, int], Tuple[int, int]] = {}
         visited = set()
         queue = [(0, (start.x, start.y))]
 
@@ -223,27 +222,26 @@ class Bot:
         return self.dijkstra(tick_map, start, pred)
 
     def validate_tile_exists(self, tick_map: TickMap, position: Position) -> bool:
-        # Same function as in game_message.py
-        # returns a bool instead of raising an exception
         return not (
             position.x < 0
             or position.y < 0
             or position.x >= tick_map.get_map_size_x()
             or position.y >= tick_map.get_map_size_y()
+            or tick_map.get_tile_type_at(position) == TileType.WALL
         )
 
-    def are_we_first(tick: Tick, tick_number: str) -> bool:
-        return tick.teamPlayOrderings.tick_number[0] == tick.teamId
+    def are_we_first(self, tick: Tick, tick_number: str) -> bool:
+        return bool(tick.teamPlayOrderings[tick_number][0] == tick.teamId)
 
-    def get_nb_of_turn_order_generated(tick: Tick) -> int:
+    def get_nb_of_turn_order_generated(self, tick: Tick) -> int:
         return len(tick.teams) ** 2
 
-    def get_nb_of_turns_until_order_generation(tick: Tick) -> int:
-        last_turn_order_generated: int = int(tick.teamPlayOrderings.keys()[-1])
+    def get_nb_of_turns_until_order_generation(self, tick: Tick) -> int:
+        last_turn_order_generated = int(list(tick.teamPlayOrderings.keys())[-1])
         return last_turn_order_generated - tick.tick
 
-    def get_nb_of_turns_where_we_are_first_in_a_row(tick: Tick) -> int:
-        x: int = 0
+    def get_nb_of_turns_where_we_are_first_in_a_row(self, tick: Tick) -> int:
+        x = 0
         for turn, order in tick.teamPlayOrderings.items():
             if order[0] == tick.teamId:
                 x += 1
