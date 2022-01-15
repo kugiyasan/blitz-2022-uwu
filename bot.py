@@ -159,6 +159,8 @@ class Bot:
             (x, y - 1),
             (x, y + 1),
         )
+        random.shuffle(combs)
+
         for (x, y) in combs:
             pos = Position(x, y)
             if not self.validate_tile_exists(tick_map, pos):
@@ -566,7 +568,10 @@ class Bot:
         if unit.hasDiamond:
             return None
         for lasso_victim in self.can_lasso_list(tick, unit):
-            if self.are_we_before_another_team_next_turn(tick, lasso_victim.teamId):
+            if (
+                self.are_we_before_another_team_next_turn(tick, lasso_victim.teamId)
+                and lasso_victim.hasDiamond
+            ):
                 return lasso_victim
         return None
 
