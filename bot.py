@@ -2,8 +2,16 @@ from typing import Callable, Dict, List, Optional, Tuple
 from game_message import Tick, Position, TickMap, TileType, Diamond, Unit
 from game_command import CommandAction, CommandType
 
+import random
 import heapq
 import traceback
+
+DEBUG = True
+
+
+def log(*args, **kwargs) -> None:
+    if DEBUG:
+        print(*args, **kwargs)
 
 
 class Bot:
@@ -24,15 +32,15 @@ class Bot:
         diamonds = tick_map.diamonds
 
         for unit in my_team.units:
-            print(f"{unit.id=} ", end="")
+            log(f"{unit.id=} ", end="")
             enemy = self.can_attack_enemy(unit.position, tick)
 
             if tick.tick == tick.totalTick - 1 and unit.hasDiamond:
-                print("try_dropping")
+                log("try_dropping")
                 action = self.try_dropping(tick, unit)
             # S'il reste unit a spawner, la faire spawner
             elif not unit.hasSpawned:
-                print("spawn")
+                log("spawn")
                 target, diamond = self.get_spawn_near_diamond(tick, diamonds)
                 diamonds = [d for d in diamonds if d.id != diamond]
                 action = CommandAction(
@@ -41,28 +49,28 @@ class Bot:
                     target=target,
                 )
             elif unit.isSummoning:
-                print("summoning, do nothing")
+                log("summoning, do nothing")
                 action = CommandAction(
                     action=CommandType.NONE,
                     unitId=unit.id,
                 )
             elif unit.hasDiamond:
-                print("protecc_strat")
+                log("protecc_strat")
                 action = self.protecc_strat(tick, unit)
             elif enemy is not None:
-                print("attack")
+                log("attack")
                 action = CommandAction(
                     action=CommandType.ATTACK, unitId=unit.id, target=enemy
                 )
             elif self.should_lasso(tick, unit):
-                print("vine")
+                log("vine")
                 action = CommandAction(
                     action=CommandType.VINE,
                     unitId=unit.id,
                     target=self.should_lasso(tick, unit).position,
                 )
             else:
-                print("normal_move")
+                log("normal_move")
                 target = self.normal_move(tick, unit.position)
                 action = CommandAction(
                     action=CommandType.MOVE,
@@ -81,7 +89,7 @@ class Bot:
         diamond = [d for d in diamonds if d.id == unit.diamondId][0]
 
         dist = self.check_dist_from_enemy(tick, unit.position)
-        print(f"{unit.id} {unit.position} {dist=}")
+        log(f"{unit.id} {unit.position} {dist=}")
         # ! This function seems fishy, kinda doesn't work
         # check if enough time to summon
         # TODO make sure they can't vine
@@ -243,7 +251,7 @@ class Bot:
     def _normal_move(
         self, tick: Tick, unit_position: Position, target_pos: List[Position]
     ) -> Optional[Position]:
-        print("_normal_move")
+        log("_normal_move")
         tick_map = tick.map
         if len(target_pos):
 
@@ -265,7 +273,7 @@ class Bot:
                 key=key,
             )
 
-            print(f"_normal_move {target_pos=} {no_spawn=} {path=}")
+            log(f"_normal_move {target_pos=} {no_spawn=} {path=}")
             pos = None
             if len(path) >= 2:
                 pos = path[-2]
@@ -284,7 +292,7 @@ class Bot:
         return None
 
     def force_move(self, tick: Tick, unit_position: Position) -> Position:
-        print("force_move")
+        log("force_move")
         tick_map = tick.map
         width = tick_map.get_map_size_x()
         height = tick_map.get_map_size_y()
@@ -309,14 +317,18 @@ class Bot:
         """Return the position of the spawn and its nearest diamond"""
         # units = tick.get_teams_by_id()[tick.teamId].units
         tick_map = tick.map
+        if len(diamonds) == 0:
+            diamonds = tick.map.diamonds
 
         min_dist = 9999999
-        min_spawn = None
+        min_spawn = self.get_random_spawn_position(tick.map)
         min_diamond = None
 
         # spawn tile le plus proche d'un diam
         def pred(u: Position) -> bool:
-            return tick_map.get_tile_type_at(u) == TileType.SPAWN
+            return tick_map.get_tile_type_at(u) == TileType.SPAWN and any(
+                unit.position == u for team in tick.teams for unit in team.units
+            )
 
         for diamond in diamonds:
             dist, path = self.dijkstra(tick, diamond.position, pred)
@@ -328,6 +340,17 @@ class Bot:
                 min_diamond = diamond.id
 
         return min_spawn, min_diamond
+
+    def get_random_spawn_position(self, tick_map: TickMap) -> Position:
+        spawns: List[Position] = []
+
+        for x in range(tick_map.get_map_size_x()):
+            for y in range(tick_map.get_map_size_y()):
+                position = Position(x, y)
+                if tick_map.get_tile_type_at(position) == TileType.SPAWN:
+                    spawns.append(position)
+
+        return spawns[random.randint(0, len(spawns) - 1)]
 
     def get_neighbors(
         self, u: Position, width: int, height: int
@@ -381,9 +404,9 @@ class Bot:
         queue = [(0, (start.x, start.y))]
 
         while len(queue):
-            # print(queue)
+            # log(queue)
             _dist, curr = heapq.heappop(queue)
-            # print(f"{curr=}")
+            # log(f"{curr=}")
 
             if curr in visited:
                 continue
@@ -418,7 +441,7 @@ class Bot:
         elif self.is_there_a_diamond_there(tick, v):
             return False
         # elif any(unit.position == v for team in tick.teams for unit in team.units):
-        #     print([unit.position == v for team in tick.teams for unit in team.units])
+        #     log([unit.position == v for team in tick.teams for unit in team.units])
         #     return False
         return True
 
