@@ -3,6 +3,7 @@ from game_message import Tick, Position, TickMap, TileType, Diamond, Unit
 from game_command import CommandAction, CommandType
 
 import heapq
+import traceback
 
 
 class Bot:
@@ -10,12 +11,10 @@ class Bot:
         pass
 
     def get_next_moves(self, tick: Tick) -> List[CommandAction]:
-        # actions = self._get_next_moves(tick)
-        # return actions
         try:
             return self._get_next_moves(tick)
-        except Exception as e:
-            print(e)
+        except Exception:
+            traceback.print_exc()
             return []
 
     def _get_next_moves(self, tick: Tick) -> List[CommandAction]:
@@ -73,9 +72,6 @@ class Bot:
             actions.append(action)
         return actions
 
-    def attack_strat(self, tick: Tick) -> CommandAction:
-        pass
-
     def protecc_strat(self, tick: Tick, unit: Unit) -> CommandAction:
         # You got a diamond
         # OBJECTIVE: SURVIVE
@@ -89,7 +85,9 @@ class Bot:
         # ! This function seems fishy, kinda doesn't work
         # check if enough time to summon
         # TODO make sure they can't vine
-        if dist <= 2:
+        if self.are_we_in_lasso_danger_zone(tick, unit):
+            action = self.try_dropping(tick, unit)
+        elif dist <= 2:
             # if really not enough, drop
             action = self.try_dropping(tick, unit)
         elif (
@@ -233,14 +231,14 @@ class Bot:
             # Your team got all diamond, ATTACK THE ENEMY
             # Target enemies, not diamonds
             e_pos = self.find_nearest_enemy(tick, unit_position)
-            target_pos = [e_pos] if e_pos is not None else tuple()
+            target_pos = [e_pos] if e_pos is not None else []
 
             pos = self._normal_move(tick, unit_position, target_pos)
 
         if pos is not None:
             return pos
 
-        self.force_move(tick, unit_position)
+        return self.force_move(tick, unit_position)
 
     def _normal_move(
         self, tick: Tick, unit_position: Position, target_pos: List[Position]
@@ -441,7 +439,7 @@ class Bot:
     def are_we_first(self, tick: Tick, tick_number: str) -> bool:
         return bool(tick.teamPlayOrderings[tick_number][0] == tick.teamId)
 
-    def are_we_before_another_team_next_turn(self, tick, e_teamId: str) -> bool:
+    def are_we_before_another_team_next_turn(self, tick: Tick, e_teamId: str) -> bool:
         if tick.tick + 1 >= tick.totalTick:
             return False
         teamPlayOrderings = tick.teamPlayOrderings[str(tick.tick + 1)]
@@ -515,29 +513,28 @@ class Bot:
     def can_lasso_list(self, tick: Tick, unit: Unit) -> List[Unit]:
         enemy_units = self.get_enemy_units(tick)
         can_lasso_units = []
+        u_pos: Position = unit.position
+
         for e_unit in enemy_units:
-            if e_unit.position.x == unit.position.x:
-                min_x = min(unit.position.x, e_unit.position.x)
-                max_x = max(unit.position.x, e_unit.position.x)
+            if (
+                e_unit.position.x == u_pos.x
+                and tick.map.get_tile_type_at(e_unit.position) == TileType.EMPTY
+            ):
+                min_y = min(u_pos.y, e_unit.position.y)
+                max_y = max(u_pos.y, e_unit.position.y)
                 if all(
-                    tick.map.get_tile_type_at(Position(x, unit.position.y))
-                    == TileType.EMPTY
-                    and not self.is_there_a_diamond_there(
-                        tick, Position(x, unit.position.y)
-                    )
-                    for x in range(min_x, max_x + 1)
+                    tick.map.get_tile_type_at(Position(u_pos.x, y)) == TileType.EMPTY
+                    and not self.is_there_a_diamond_there(tick, Position(u_pos.x, y))
+                    for y in range(min_y, max_y + 1)
                 ):
                     can_lasso_units.append(e_unit)
-            elif e_unit.position.y == unit.position.y:
-                min_y = min(unit.position.y, e_unit.position.y)
-                max_y = max(unit.position.y, e_unit.position.y)
+            elif e_unit.position.y == u_pos.y:
+                min_x = min(u_pos.x, e_unit.position.x)
+                max_x = max(u_pos.x, e_unit.position.x)
                 if all(
-                    tick.map.get_tile_type_at(Position(unit.position.x, y))
-                    == TileType.EMPTY
-                    and not self.is_there_a_diamond_there(
-                        tick, Position(unit.position.x, y)
-                    )
-                    for y in range(min_y, max_y + 1)
+                    tick.map.get_tile_type_at(Position(x, u_pos.y)) == TileType.EMPTY
+                    and not self.is_there_a_diamond_there(tick, Position(x, u_pos.y))
+                    for x in range(min_x, max_x + 1)
                 ):
                     can_lasso_units.append(e_unit)
         return can_lasso_units
@@ -552,3 +549,30 @@ class Bot:
 
     def is_there_a_diamond_there(self, tick: Tick, position: Position) -> bool:
         return any(d.position == position for d in tick.map.diamonds)
+
+    def are_we_in_lasso_danger_zone(self, tick: Tick, unit: Unit) -> bool:
+        enemy_units = self.get_enemy_units(tick)
+        threats = []
+        for e_unit in enemy_units:
+            if (
+                abs(e_unit.position.x - unit.position.x) < 2
+                and tick.map.get_tile_type_at(e_unit.position) != TileType.SPAWN
+            ):
+                min_y = min(unit.position.y, e_unit.position.y)
+                max_y = max(unit.position.y, e_unit.position.y)
+                if all(
+                    tick.map.get_tile_type_at(Position(unit.position.x, y))
+                    == TileType.EMPTY
+                    for y in range(min_y, max_y + 1)
+                ):
+                    threats.append(e_unit)
+            elif abs(e_unit.position.y - unit.position.y) < 2:
+                min_x = min(unit.position.x, e_unit.position.x)
+                max_x = max(unit.position.x, e_unit.position.x)
+                if all(
+                    tick.map.get_tile_type_at(Position(x, unit.position.y))
+                    == TileType.EMPTY
+                    for x in range(min_x, max_x + 1)
+                ):
+                    threats.append(e_unit)
+        return threats != []
