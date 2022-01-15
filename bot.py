@@ -25,11 +25,13 @@ class Bot:
         diamonds = tick_map.diamonds
 
         for unit in my_team.units:
+            print(f"{unit.id=} ", end="")
             enemy = self.can_attack_enemy(unit.position, tick)
             if tick.tick == tick.totalTick - 1 and unit.hasDiamond:
                 action = self.try_dropping(tick, unit)
             # S'il reste unit à spawner, la faire spawner
             elif not unit.hasSpawned:
+                print("spawn")
                 target, diamond = self.get_spawn_near_diamond(tick, diamonds)
                 diamonds = [d for d in diamonds if d.id != diamond]
                 action = CommandAction(
@@ -38,27 +40,28 @@ class Bot:
                     target=target,
                 )
             elif unit.isSummoning:
+                print("summoning, do nothing")
                 action = CommandAction(
                     action=CommandType.NONE,
                     unitId=unit.id,
                 )
             elif unit.hasDiamond:
+                print("protecc_strat")
                 action = self.protecc_strat(tick, unit)
             elif enemy is not None:
+                print("attack")
                 action = CommandAction(
                     action=CommandType.ATTACK, unitId=unit.id, target=enemy
                 )
-            elif self.can_lasso_list(tick, unit):
-                for lasso_victim in self.can_lasso_list(tick, unit):
-                    if self.are_we_before_another_team_next_turn(
-                        tick, lasso_victim.teamId
-                    ):
-                        action = CommandAction(
-                            action=CommandType.VINE,
-                            unitId=unit.id,
-                            target=lasso_victim.position,
-                        )
+            elif self.should_lasso(tick, unit):
+                print("vine")
+                action = CommandAction(
+                    action=CommandType.VINE,
+                    unitId=unit.id,
+                    target=self.should_lasso(tick, unit).position,
+                )
             else:
+                print("normal_move")
                 target = self.normal_move(tick, unit.position)
                 action = CommandAction(
                     action=CommandType.MOVE,
@@ -80,6 +83,8 @@ class Bot:
         diamond = [d for d in diamonds if d.id == unit.diamondId][0]
 
         dist = self.check_dist_from_enemy(tick, unit.position)
+        print(f"{unit.id} {unit.position} {dist=}")
+        # ! This function seems fishy, kinda doesn't work
         # check if enough time to summon
         # TODO make sure they can't vine
         if dist <= 2:
@@ -189,20 +194,21 @@ class Bot:
         # the unit will get stuck in a corner
         # When an enemy is near a unit, move in the opposite direction
         enemy_pos = self.find_nearest_enemy(tick, unit_position)
-        dx = unit_position.x - enemy_pos.x
-        dy = unit_position.y - enemy_pos.y
+        if enemy_pos is not None:
+            dx = unit_position.x - enemy_pos.x
+            dy = unit_position.y - enemy_pos.y
 
-        x = unit_position.x
-        y = unit_position.y
+            x = unit_position.x
+            y = unit_position.y
 
-        if abs(dx) > abs(dy):
-            x += 1 if dx > 0 else -1
-        else:
-            y += 1 if dy > 0 else -1
+            if abs(dx) > abs(dy):
+                x += 1 if dx > 0 else -1
+            else:
+                y += 1 if dy > 0 else -1
 
-        position = Position(x, y)
-        if self.validate_tile_exists(tick.map, position):
-            return position
+            position = Position(x, y)
+            if self.validate_tile_exists(tick.map, position):
+                return position
         return self.force_move(tick, unit_position)
 
     # Returns diamond's position (old name: get_diamond_nearest_unit)
@@ -228,34 +234,40 @@ class Bot:
             # Target enemies, not diamonds
             target_pos = (self.find_nearest_enemy(tick, unit_position),)
 
-        def pred(u: Position) -> bool:
-            return u == unit_position
+        if len(target_pos):
 
-        def key(e: Tuple[int, Position]) -> int:
-            if e[0] == -1:
-                return 420420420420
-            return e[0]
+            def pred(u: Position) -> bool:
+                return u == unit_position
 
-        _, path = min(
-            (
-                self.dijkstra(tick_map, position, pred, no_spawn=True)
-                for position in target_pos
-            ),
-            key=key,
-        )
+            def key(e: Tuple[int, Position]) -> int:
+                if e[0] == -1:
+                    return 420420420420
+                return e[0]
 
-        pos = None
-        if len(path) >= 2:
-            pos = path[-2]
-        elif len(path):
-            pos = path[0]
+            no_spawn = tick_map.get_tile_type_at(unit_position) != TileType.SPAWN
 
-        if (
-            pos is not None
-            and self.validate_tile_exists(tick_map, pos)
-            and all(unit.position != pos for team in tick.teams for unit in team.units)
-        ):
-            return pos
+            _, path = min(
+                (
+                    self.dijkstra(tick_map, position, pred, no_spawn=no_spawn)
+                    for position in target_pos
+                ),
+                key=key,
+            )
+
+            pos = None
+            if len(path) >= 2:
+                pos = path[-2]
+            elif len(path):
+                pos = path[0]
+
+            if (
+                pos is not None
+                and self.validate_tile_exists(tick_map, pos)
+                and all(
+                    unit.position != pos for team in tick.teams for unit in team.units
+                )
+            ):
+                return pos
 
         return self.force_move(tick, unit_position)
 
@@ -339,10 +351,11 @@ class Bot:
         https://pythonalgos.com/dijkstras-algorithm-in-5-steps-with-python/
 
         >>> bot = Bot()
-        >>> tiles = [["EMPTY" for _ in range(100)] for _ in range(100)]
+        >>> tiles = [["EMPTY" for _ in range(10)] for _ in range(10)]
+        >>> tiles[1] = ["SPAWN"] * 9 + ["EMPTY"]
         >>> tick_map = TickMap(tiles=tiles, diamonds=[])
-        >>> def pred(u: Position) -> bool: return u == Position(99, 99)
-        >>> bot.dijkstra(tick_map, Position(0, 0), pred)
+        >>> def pred(u: Position) -> bool: return u == Position(9, 9)
+        >>> bot.dijkstra(tick_map, Position(0, 0), pred, no_spawn=True)
         """
         width = tick_map.get_map_size_x()
         height = tick_map.get_map_size_y()
@@ -356,6 +369,7 @@ class Bot:
         while len(queue):
             # print(queue)
             _dist, curr = heapq.heappop(queue)
+            # print(f"{curr=}")
 
             if curr in visited:
                 continue
@@ -369,10 +383,11 @@ class Bot:
             for v in self.get_neighbors(Position(cx, cy), width, height):
                 x, y = v.x, v.y
                 if not self.validate_tile_in_bound(tick_map, v):
-                    if not self.validate_tile_exists(tick_map, v):
-                        continue
-                    elif no_spawn and tick_map.get_tile_type_at(v) != TileType.WALL:
-                        continue
+                    continue
+                elif no_spawn and tick_map.get_tile_type_at(v) != TileType.EMPTY:
+                    continue
+                elif tick_map.get_tile_type_at(v) == TileType.WALL:
+                    continue
 
                 new_dist = dist[cy][cx] + 1
                 if dist[y][x] == -1 or new_dist < dist[y][x]:
@@ -408,7 +423,7 @@ class Bot:
         return bool(tick.teamPlayOrderings[tick_number][0] == tick.teamId)
 
     def are_we_before_another_team_next_turn(self, tick, e_teamId: str) -> bool:
-        teamPlayOrderings = tick.teamPlayOrderings.tick.tick + 1
+        teamPlayOrderings = tick.teamPlayOrderings[str(tick.tick+1)]
         return teamPlayOrderings.index(tick.teamId) < teamPlayOrderings.index(e_teamId)
 
     def get_nb_of_turn_order_generated(self, tick: Tick) -> int:
@@ -437,9 +452,14 @@ class Bot:
                         return unit
         return None
 
-    def find_nearest_enemy(self, tick: Tick, unit_position: Position) -> Position:
+    def find_nearest_enemy(
+        self, tick: Tick, unit_position: Position
+    ) -> Optional[Position]:
         tick_map = tick.map
         enemy_units = self.get_enemy_units(tick)
+
+        if len(enemy_units) == 0:
+            return None
 
         def pred(u: Position) -> bool:
             return u == unit_position
@@ -460,7 +480,7 @@ class Bot:
 
         if len(path):
             return path[0]
-        return Position(0, 0)
+        return None
 
     def get_enemy_units(self, tick: Tick) -> List[Unit]:
         return [
@@ -476,32 +496,40 @@ class Bot:
         for e_unit in enemy_units:
             if e_unit.position.x == unit.position.x:
                 # Check pour des murs (very lazy)
-                dist, _ = self.calculate_distance(
-                    tick.map, unit.position, e_unit.position
-                )
-                if dist == abs(e_unit.position.x - unit.position.x):
-                    can_lasso_units.append(e_unit)
-                # if all(
-                #     tick.map.get_tyle_type_at(Position(x, unit.position.y))
-                #     != TileType.WALL
-                #     and tick.map.get_tyle_type_at(Position(x, unit.position.y))
-                #     != TileType.SPAWN
-                #     for x in range(unit.position.x, e_unit.position.x)
-                # ):
+                # dist, _ = self.calculate_distance(
+                #     tick.map, unit.position, e_unit.position
+                # )
+                # if dist == abs(e_unit.position.x - unit.position.x):
                 #     can_lasso_units.append(e_unit)
+                min_x = min(unit.position.x, e_unit.position.x)
+                max_x = max(unit.position.x, e_unit.position.x)
+                if all(
+                    tick.map.get_tile_type_at(Position(x, unit.position.y))
+                    == TileType.EMPTY
+                    for x in range(min_x, max_x + 1)
+                ):
+                    can_lasso_units.append(e_unit)
             elif e_unit.position.y == unit.position.y:
                 # Check pour des murs (very lazy)
-                dist, _ = self.calculate_distance(
-                    tick.map, unit.position, e_unit.position
-                )
-                if dist == abs(e_unit.position.y - unit.position.y):
-                    can_lasso_units.append(e_unit)
-                # if all(
-                #     tick.map.get_tyle_type_at(Position(unit.position.x, y))
-                #     != TileType.WALL
-                #     and tick.map.get_tyle_type_at(Position(unit.position.x, y))
-                #     != TileType.SPAWN
-                #     for y in range(unit.position.y, e_unit.position.y)
-                # ):
+                # dist, _ = self.calculate_distance(
+                #     tick.map, unit.position, e_unit.position
+                # )
+                # if dist == abs(e_unit.position.y - unit.position.y):
                 #     can_lasso_units.append(e_unit)
+                min_y = min(unit.position.y, e_unit.position.y)
+                max_y = max(unit.position.y, e_unit.position.y)
+                if all(
+                    tick.map.get_tile_type_at(Position(unit.position.x, y))
+                    == TileType.EMPTY
+                    for y in range(min_y, max_y + 1)
+                ):
+                    can_lasso_units.append(e_unit)
         return can_lasso_units
+
+    def should_lasso(self, tick: Tick, unit: Unit) -> Unit:
+        for lasso_victim in self.can_lasso_list(tick, unit):
+            if self.are_we_before_another_team_next_turn(
+                tick, lasso_victim.teamId
+            ):
+                return lasso_victim
+        return None
